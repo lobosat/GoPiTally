@@ -12,12 +12,15 @@ import (
 	"time"
 )
 
-type vmixClientType struct {
+type vmixClients struct {
 	conn net.Conn
 	w    *bufio.Writer
 	r    *bufio.Reader
 	sync.Mutex
-	connected bool
+	connected       bool
+	vmixIP          string
+	vmixMessageChan chan string
+	tallyCfg        tally
 }
 
 type tally struct {
@@ -30,46 +33,42 @@ type ledReq struct {
 	mode  string //all, off, rotate, strobe
 }
 
-var vmixClient = new(vmixClientType)
 var wg sync.WaitGroup
-var vmixMessageChan = make(chan string)
-var vmixIP = "192.168.1.173"
 var ledChan = make(chan ledReq)
 var buttonChan = make(chan time.Time, 10)
-var t1 = tally{
-	action: "Bus",
-	value:  "C",
-}
 
-func init() {
-	//Connect to the vmix API
-	err := vmixAPIConnect(vmixIP + ":8099")
-	if err != nil {
-		fmt.Println("Error connecting to vmix API:")
-		panic(err)
-	}
-}
-
-// vmixAPIConnect connects to the vMix API. apiAddress is a string
-// of the format ipaddress:port.  By default, the vMix API is on port 8099.
+// vmixAPIConnect connects to the vMix API. By default, the vMix API is on port 8099.
 // If vMix is not up, this function will continue trying to connect, and will
 // block until a connection is achieved.
-func vmixAPIConnect(apiAddress string) error {
+func vmixAPIConnect(vmixClient *vmixClients, ledChan chan ledReq) error {
+	var led ledReq
+
 	vmixClient.connected = false
 	for vmixClient.connected == false {
 		timeout := time.Second * 20
-		conn, err := net.DialTimeout("tcp", apiAddress, timeout)
+		conn, err := net.DialTimeout("tcp", vmixClient.vmixIP+":8099", timeout)
 
 		if err == nil {
 			vmixClient.conn = conn
 			vmixClient.w = bufio.NewWriter(conn)
 			vmixClient.r = bufio.NewReader(conn)
 			vmixClient.connected = true
+			led.color = "all"
+			led.mode = "off"
+			ledChan <- led
 		} else if strings.Contains(err.Error(), "connection timed out") ||
-			strings.Contains(err.Error(), "connection refused") {
+			strings.Contains(err.Error(), "connection refused") ||
+			strings.Contains(err.Error(), "i/o timeout") {
+
 			fmt.Println("vmix api is inaccessible.  Probably because vMix is not running")
 			fmt.Println("Waiting 5 seconds and trying again")
 			vmixClient.connected = false
+			led.color = "all"
+			led.mode = "off"
+			ledChan <- led
+			led.color = "yellow"
+			led.mode = "all"
+			ledChan <- led
 			time.Sleep(time.Second * 5)
 		} else {
 			fmt.Println("Unable to connect. Error was: ", err)
@@ -79,7 +78,7 @@ func vmixAPIConnect(apiAddress string) error {
 	return nil
 }
 
-func SendMessage(message string) error {
+func SendMessage(vmixClient *vmixClients, message string) error {
 	fmt.Println(message)
 	vmixClient.Lock()
 	pub := fmt.Sprintf("%v\r\n", message)
@@ -91,10 +90,10 @@ func SendMessage(message string) error {
 	return err
 }
 
-func getMessage() {
+func getMessage(vmixClient *vmixClients) {
 
 	// Subscribe to the activator feed in the vMix API
-	err := SendMessage("SUBSCRIBE ACTS")
+	err := SendMessage(vmixClient, "SUBSCRIBE ACTS")
 	if err != nil {
 		fmt.Println("Error in GetMessage.SendMessage: ", err)
 		wg.Done()
@@ -105,7 +104,7 @@ func getMessage() {
 		line, err := vmixClient.r.ReadString('\n')
 
 		if err == nil {
-			vmixMessageChan <- line
+			vmixClient.vmixMessageChan <- line
 			fmt.Println(line)
 		} else {
 			wg.Done()
@@ -114,9 +113,9 @@ func getMessage() {
 	}
 }
 
-func processVmixMessage() {
+func processVmixMessage(vmixClient *vmixClients) {
 	for {
-		vmixMessage := <-vmixMessageChan
+		vmixMessage := <-vmixClient.vmixMessageChan
 		messageSlice := strings.Fields(vmixMessage)
 
 		var state int
@@ -126,28 +125,44 @@ func processVmixMessage() {
 		// messageSlice[3] - Input
 		// messageSlice[4] - State (usually 0 for off, 1 for on)
 
-		if t1.action == "Input" && messageSlice[0] == "ACTS" && messageSlice[1] == "OK" &&
-			messageSlice[2] == "Input" && messageSlice[3] == t1.value {
+		if vmixClient.tallyCfg.action == "Input" && messageSlice[0] == "ACTS" && messageSlice[1] == "OK" &&
+			messageSlice[2] == "Input" && messageSlice[3] == vmixClient.tallyCfg.value {
 			state, _ = strconv.Atoi(messageSlice[4])
 			fmt.Println("Input changed: ", messageSlice)
 
 			if state == 0 {
 				fmt.Println(messageSlice[2], " off")
+				ledChan <- ledReq{
+					color: "red",
+					mode:  "off",
+				}
 			}
 			if state == 1 {
 				fmt.Println(messageSlice[2], " on")
+				ledChan <- ledReq{
+					color: "red",
+					mode:  "on",
+				}
 			}
 
 		}
 
-		if t1.action == "Bus" {
-			if messageSlice[2] == t1.action+t1.value+"Audio" {
+		if vmixClient.tallyCfg.action == "Bus" {
+			if messageSlice[2] == vmixClient.tallyCfg.action+vmixClient.tallyCfg.value+"Audio" {
 				state, _ = strconv.Atoi(messageSlice[3])
 				if state == 0 {
 					fmt.Println(messageSlice[2], " off")
+					ledChan <- ledReq{
+						color: "red",
+						mode:  "off",
+					}
 				}
 				if state == 1 {
 					fmt.Println(messageSlice[2], " on")
+					ledChan <- ledReq{
+						color: "red",
+						mode:  "all",
+					}
 				}
 			}
 		}
@@ -308,6 +323,7 @@ func buttonCallback(event gpiod.LineEvent) {
 }
 
 func main() {
+
 	wg.Add(1)
 
 	go initButton()
@@ -317,16 +333,34 @@ func main() {
 		mode:  "off",
 	}
 
-	go getMessage()
-	go processVmixMessage()
+	var vmixClient = new(vmixClients)
+	vmixClient.vmixIP = "192.168.1.173"
+	vmixClient.vmixMessageChan = make(chan string)
+	vmixClient.tallyCfg = tally{
+		action: "Bus",
+		value:  "C",
+	}
+
+	//Connect to the vmix API
+	err := vmixAPIConnect(vmixClient, ledChan)
+	if err != nil {
+		fmt.Println("Error connecting to vmix API: ", err)
+		close(ledChan)
+		close(buttonChan)
+		close(vmixClient.vmixMessageChan)
+		panic(err)
+	}
+
+	go getMessage(vmixClient)
+	go processVmixMessage(vmixClient)
 
 	defer func(conn net.Conn) {
 		err := conn.Close()
 		if err != nil {
-
+			return
 		}
 	}(vmixClient.conn)
-	defer close(vmixMessageChan)
+	defer close(vmixClient.vmixMessageChan)
 	defer close(ledChan)
 	defer close(buttonChan)
 
