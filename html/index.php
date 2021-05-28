@@ -96,6 +96,7 @@ if ( empty($_POST['sub_form']) && empty($_POST['accept']) && empty($_POST['reboo
                 <option value="input">Input</option>
                 <option value="bus">Bus</option>
             </select>
+            <br/>
             <label for="tally_value">Tally Value</label>
             <input type="text" name="tally_value" id="tally_value" size=3/>
             <br/>
