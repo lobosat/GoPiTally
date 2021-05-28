@@ -1,0 +1,14 @@
+# Place in /etc/systemd/system
+[Unit]
+Description=PiTally daemon that polls vMix TCP API
+
+[Service]
+Type=exec
+ExecStart=/usr/local/bin/pitally
+ExecStopPost=/usr/bin/python /usr/local/bin/allOff.py
+KillMode=process
+Restart=always
+RestartSec=42s
+
+[Install]
+WantedBy=multi-user.target

@@ -2,10 +2,13 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"github.com/warthog618/gpiod"
 	"github.com/warthog618/gpiod/device/rpi"
+	"io/ioutil"
 	"net"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -24,13 +27,14 @@ type vmixClients struct {
 }
 
 type tally struct {
-	action string // Bus or Input
-	value  string
+	Action string `json:"tally_action"` // Bus or Input
+	Value  string `json:"tally_value"`
+	IP     string `json:"ip"`
 }
 
 type ledReq struct {
 	color string //red, yellow, green or all
-	mode  string //all, off, rotate, strobe
+	mode  string //all, off
 }
 
 var wg sync.WaitGroup
@@ -79,7 +83,7 @@ func vmixAPIConnect(vmixClient *vmixClients, ledChan chan ledReq) error {
 }
 
 func SendMessage(vmixClient *vmixClients, message string) error {
-	fmt.Println(message)
+
 	vmixClient.Lock()
 	pub := fmt.Sprintf("%v\r\n", message)
 	_, err := vmixClient.w.WriteString(pub)
@@ -105,7 +109,6 @@ func getMessage(vmixClient *vmixClients) {
 
 		if err == nil {
 			vmixClient.vmixMessageChan <- line
-			fmt.Println(line)
 		} else {
 			wg.Done()
 			fmt.Println("Error in GetMessage.ReadString: ", err)
@@ -125,10 +128,9 @@ func processVmixMessage(vmixClient *vmixClients) {
 		// messageSlice[3] - Input
 		// messageSlice[4] - State (usually 0 for off, 1 for on)
 
-		if vmixClient.tallyCfg.action == "Input" && messageSlice[0] == "ACTS" && messageSlice[1] == "OK" &&
-			messageSlice[2] == "Input" && messageSlice[3] == vmixClient.tallyCfg.value {
+		if vmixClient.tallyCfg.Action == "Input" && messageSlice[0] == "ACTS" && messageSlice[1] == "OK" &&
+			messageSlice[2] == "Input" && messageSlice[3] == vmixClient.tallyCfg.Value {
 			state, _ = strconv.Atoi(messageSlice[4])
-			fmt.Println("Input changed: ", messageSlice)
 
 			if state == 0 {
 				fmt.Println(messageSlice[2], " off")
@@ -147,18 +149,16 @@ func processVmixMessage(vmixClient *vmixClients) {
 
 		}
 
-		if vmixClient.tallyCfg.action == "Bus" {
-			if messageSlice[2] == vmixClient.tallyCfg.action+vmixClient.tallyCfg.value+"Audio" {
+		if vmixClient.tallyCfg.Action == "Bus" {
+			if messageSlice[2] == vmixClient.tallyCfg.Action+vmixClient.tallyCfg.Value+"Audio" {
 				state, _ = strconv.Atoi(messageSlice[3])
 				if state == 0 {
-					fmt.Println(messageSlice[2], " off")
 					ledChan <- ledReq{
 						color: "red",
 						mode:  "off",
 					}
 				}
 				if state == 1 {
-					fmt.Println(messageSlice[2], " on")
 					ledChan <- ledReq{
 						color: "red",
 						mode:  "all",
@@ -322,7 +322,31 @@ func buttonCallback(event gpiod.LineEvent) {
 	}
 }
 
+func getConfig() tally {
+	var tallyCfg tally
+
+	tallyFile, err := os.Open("/usr/local/etc/pitally/tally_config.json")
+	if err != nil {
+		panic(err)
+	}
+	defer func(tallyFile *os.File) {
+		err := tallyFile.Close()
+		if err != nil {
+			panic(err)
+		}
+	}(tallyFile)
+
+	byteValue, _ := ioutil.ReadAll(tallyFile)
+	err = json.Unmarshal(byteValue, &tallyCfg)
+	if err != nil {
+		panic(err)
+	}
+
+	return tallyCfg
+}
+
 func main() {
+	tallyCfg := getConfig()
 
 	wg.Add(1)
 
@@ -336,10 +360,7 @@ func main() {
 	var vmixClient = new(vmixClients)
 	vmixClient.vmixIP = "192.168.1.173"
 	vmixClient.vmixMessageChan = make(chan string)
-	vmixClient.tallyCfg = tally{
-		action: "Bus",
-		value:  "C",
-	}
+	vmixClient.tallyCfg = tallyCfg
 
 	//Connect to the vmix API
 	err := vmixAPIConnect(vmixClient, ledChan)

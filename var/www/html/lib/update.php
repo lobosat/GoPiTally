@@ -85,8 +85,8 @@ function update_tally ($api_ip,$tally_action,$tally_value) {
     $file = 'tally_config.json';
 
     $config = array('ip'=>$api_ip,
-                    'tally_action'=>$tally_action,
-                    'tally_value'=>$tally_value);
+                    'tally_action' => $tally_action,
+                    'tally_value' => strtoupper($tally_value));
 
     $config_json = json_encode($config);
 
