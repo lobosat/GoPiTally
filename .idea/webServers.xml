@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="WebServers">
+    <option name="servers">
+      <webServer id="b02719d1-6c08-4bb9-930b-e12677e0be33" name="centerpi">
+        <fileTransfer rootFolder="/home/pi/go/src/PiTally" accessType="SFTP" host="192.168.1.166" port="22" sshConfigId="5ffe69f1-e6b6-4eb4-89d6-81a0fcf42bd0" sshConfig="pi@192.168.1.166:22 password">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" passiveMode="true" shareSSLContext="true" />
+          </advancedOptions>
+        </fileTransfer>
+      </webServer>
+    </option>
+  </component>
+</project>
