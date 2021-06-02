@@ -7,7 +7,8 @@
 <?php
 if ($_POST['reboot'] == 'Reboot') {
     exec('sudo /usr/local/bin/doap.sh off');
-    exec('sudo /usr/sbin/reboot');
+    exec('sudo systemctl stop pitally');
+    exec('sudo systemctl start pitally');
 }
 
 if ($_POST['accept'] == 'Accept') {

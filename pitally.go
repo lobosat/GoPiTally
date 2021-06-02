@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"net"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"sync"
@@ -44,12 +45,12 @@ var buttonChan = make(chan time.Time, 10)
 // vmixAPIConnect connects to the vMix API. By default, the vMix API is on port 8099.
 // If vMix is not up, this function will continue trying to connect, and will
 // block until a connection is achieved.
-func vmixAPIConnect(vmixClient *vmixClients, ledChan chan ledReq) error {
+func vmixAPIConnect(vmixClient *vmixClients) error {
 	var led ledReq
 
 	vmixClient.connected = false
 	for vmixClient.connected == false {
-		timeout := time.Second * 20
+		timeout := time.Second * 5
 		conn, err := net.DialTimeout("tcp", vmixClient.vmixIP+":8099", timeout)
 
 		if err == nil {
@@ -110,18 +111,23 @@ func getMessage(vmixClient *vmixClients) {
 		if err == nil {
 			vmixClient.vmixMessageChan <- line
 		} else {
-			wg.Done()
 			fmt.Println("Error in GetMessage.ReadString: ", err)
+			// most likely cause is that the connection to vMix went away (EOF).  Try to reconnect
+			wg.Done()
+			return
 		}
 	}
 }
 
 func processVmixMessage(vmixClient *vmixClients) {
+	var state int
 	for {
 		vmixMessage := <-vmixClient.vmixMessageChan
-		messageSlice := strings.Fields(vmixMessage)
+		if len(vmixMessage) < 1 {
+			return
+		}
 
-		var state int
+		messageSlice := strings.Fields(vmixMessage)
 
 		// ex:  [ACTS OK InputPlaying 9 1]
 		// messageSlice[2] - Action
@@ -312,6 +318,29 @@ func buttonCallback(event gpiod.LineEvent) {
 						mode:  "all",
 					}
 				}
+				cmd := exec.Command("/usr/local/bin/doap.sh", "on")
+				stdout, err := cmd.Output()
+
+				if err != nil {
+					fmt.Println(err.Error())
+					return
+				}
+
+				fmt.Println(stdout)
+				ledChan <- ledReq{
+					color: "yellow",
+					mode:  "off",
+				}
+				time.Sleep(time.Second)
+				ledChan <- ledReq{
+					color: "green",
+					mode:  "off",
+				}
+				/*err = syscall.Reboot(syscall.LINUX_REBOOT_CMD_RESTART)
+				if err != nil {
+					fmt.Println(err)
+					return
+				}*/
 
 			} else {
 				fmt.Println("Channel closed!")
@@ -354,16 +383,21 @@ func main() {
 	go lights()
 	ledChan <- ledReq{
 		color: "all",
+		mode:  "all",
+	}
+	time.Sleep(time.Second * 3)
+	ledChan <- ledReq{
+		color: "all",
 		mode:  "off",
 	}
 
 	var vmixClient = new(vmixClients)
-	vmixClient.vmixIP = "192.168.1.173"
+	vmixClient.vmixIP = tallyCfg.IP
 	vmixClient.vmixMessageChan = make(chan string)
 	vmixClient.tallyCfg = tallyCfg
 
 	//Connect to the vmix API
-	err := vmixAPIConnect(vmixClient, ledChan)
+	err := vmixAPIConnect(vmixClient)
 	if err != nil {
 		fmt.Println("Error connecting to vmix API: ", err)
 		close(ledChan)
@@ -386,5 +420,6 @@ func main() {
 	defer close(buttonChan)
 
 	wg.Wait()
+	fmt.Println("PiTally went boom!")
 
 }

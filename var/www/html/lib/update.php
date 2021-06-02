@@ -88,7 +88,7 @@ function update_tally ($api_ip,$tally_action,$tally_value) {
                     'tally_action' => $tally_action,
                     'tally_value' => strtoupper($tally_value));
 
-    $config_json = json_encode($config);
+    $config_json = json_encode($config) . "\n";
 
     //backup current config file
     rename($path . $file,$path . $file . "." .time());
