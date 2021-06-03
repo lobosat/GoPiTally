@@ -33,20 +33,13 @@ type tally struct {
 	IP     string `json:"ip"`
 }
 
-type ledReq struct {
-	color string //red, yellow, green or all
-	mode  string //all, off
-}
-
 var wg sync.WaitGroup
-var ledChan = make(chan ledReq)
 var buttonChan = make(chan time.Time, 10)
 
 // vmixAPIConnect connects to the vMix API. By default, the vMix API is on port 8099.
 // If vMix is not up, this function will continue trying to connect, and will
 // block until a connection is achieved.
 func vmixAPIConnect(vmixClient *vmixClients) error {
-	var led ledReq
 
 	vmixClient.connected = false
 	for vmixClient.connected == false {
@@ -58,9 +51,7 @@ func vmixAPIConnect(vmixClient *vmixClients) error {
 			vmixClient.w = bufio.NewWriter(conn)
 			vmixClient.r = bufio.NewReader(conn)
 			vmixClient.connected = true
-			led.color = "all"
-			led.mode = "off"
-			ledChan <- led
+			leds("all", "off")
 		} else if strings.Contains(err.Error(), "connection timed out") ||
 			strings.Contains(err.Error(), "connection refused") ||
 			strings.Contains(err.Error(), "i/o timeout") {
@@ -68,12 +59,8 @@ func vmixAPIConnect(vmixClient *vmixClients) error {
 			fmt.Println("vmix api is inaccessible.  Probably because vMix is not running")
 			fmt.Println("Waiting 5 seconds and trying again")
 			vmixClient.connected = false
-			led.color = "all"
-			led.mode = "off"
-			ledChan <- led
-			led.color = "yellow"
-			led.mode = "all"
-			ledChan <- led
+			leds("all", "off")
+			leds("yellow", "on")
 			time.Sleep(time.Second * 5)
 		} else {
 			fmt.Println("Unable to connect. Error was: ", err)
@@ -139,117 +126,25 @@ func processVmixMessage(vmixClient *vmixClients) {
 			state, _ = strconv.Atoi(messageSlice[4])
 
 			if state == 0 {
-				fmt.Println(messageSlice[2], " off")
-				ledChan <- ledReq{
-					color: "red",
-					mode:  "off",
-				}
+				leds("red", "off")
 			}
 			if state == 1 {
-				fmt.Println(messageSlice[2], " on")
-				ledChan <- ledReq{
-					color: "red",
-					mode:  "on",
-				}
+				leds("red", "on")
 			}
-
 		}
 
 		if vmixClient.tallyCfg.Action == "Bus" {
 			if messageSlice[2] == vmixClient.tallyCfg.Action+vmixClient.tallyCfg.Value+"Audio" {
 				state, _ = strconv.Atoi(messageSlice[3])
 				if state == 0 {
-					ledChan <- ledReq{
-						color: "red",
-						mode:  "off",
-					}
+					leds("red", "off")
 				}
 				if state == 1 {
-					ledChan <- ledReq{
-						color: "red",
-						mode:  "all",
-					}
+					leds("red", "on")
 				}
 			}
 		}
 
-	}
-}
-
-func lights() {
-
-	c, err := gpiod.NewChip("gpiochip0")
-	if err != nil {
-		panic(err)
-	}
-
-	var redPins = []int{rpi.J8p11, rpi.J8p16, rpi.J8p29, rpi.J8p36}
-	var yellowPins = []int{rpi.J8p13, rpi.J8p18, rpi.J8p31, rpi.J8p38}
-	var greenPins = []int{rpi.J8p15, rpi.J8p22, rpi.J8p33, rpi.J8p40}
-
-	redLines, err := c.RequestLines(redPins, gpiod.AsOutput(0, 0, 0, 0), gpiod.WithPullDown)
-	if err != nil {
-		panic(err)
-	}
-
-	yellowLines, err := c.RequestLines(yellowPins, gpiod.AsOutput(0, 0, 0, 0), gpiod.WithPullDown)
-	if err != nil {
-		panic(err)
-	}
-
-	greenLines, err := c.RequestLines(greenPins, gpiod.AsOutput(0, 0, 0, 0), gpiod.WithPullDown)
-	if err != nil {
-		panic(err)
-	}
-
-	// Lines are now configured, we can safely close the chip
-	err = c.Close()
-	if err != nil {
-		panic(err)
-	}
-
-	for {
-		req := <-ledChan
-		on := []int{1, 1, 1, 1}
-		off := []int{0, 0, 0, 0}
-
-		switch color := req.color; color {
-		case "red":
-			if req.mode == "all" {
-				_ = redLines.SetValues(on)
-			}
-			if req.mode == "off" {
-				_ = redLines.SetValues(off)
-			}
-
-		case "yellow":
-			if req.mode == "all" {
-				_ = yellowLines.SetValues(on)
-			}
-			if req.mode == "off" {
-				_ = yellowLines.SetValues(off)
-			}
-
-		case "green":
-			if req.mode == "all" {
-				_ = greenLines.SetValues(on)
-			}
-			if req.mode == "off" {
-				_ = greenLines.SetValues(off)
-			}
-
-		case "all":
-			if req.mode == "all" {
-				_ = redLines.SetValues(on)
-				_ = yellowLines.SetValues(on)
-				_ = greenLines.SetValues(on)
-			}
-			if req.mode == "off" {
-				_ = redLines.SetValues(off)
-				_ = yellowLines.SetValues(off)
-				_ = greenLines.SetValues(off)
-			}
-		}
 	}
 }
 
@@ -298,52 +193,32 @@ func buttonCallback(event gpiod.LineEvent) {
 			if ok {
 				tDiff := time.Now().Sub(timePressed)
 				if tDiff > time.Second*3 {
-					ledChan <- ledReq{
-						color: "all",
-						mode:  "off",
-					}
-
-					ledChan <- ledReq{
-						color: "red",
-						mode:  "all",
-					}
+					leds("all", "off")
+					leds("red", "on")
 					time.Sleep(time.Second)
-					ledChan <- ledReq{
-						color: "yellow",
-						mode:  "all",
-					}
+					leds("yellow", "on")
 					time.Sleep(time.Second)
-					ledChan <- ledReq{
-						color: "green",
-						mode:  "all",
+					leds("green", "on")
+
+					cmd := exec.Command("sudo", "/usr/local/bin/doap.sh", "on")
+					stdout, err := cmd.Output()
+					if err != nil {
+						fmt.Println("stderror:", cmd.Stderr)
+						fmt.Println("String:", cmd.String())
+						fmt.Println("exec", err.Error())
+						fmt.Println("stdout:", stdout)
+						return
 					}
-				}
-				cmd := exec.Command("/usr/local/bin/doap.sh", "on")
-				stdout, err := cmd.Output()
+					fmt.Println("210 String:", cmd.String())
+					fmt.Println("211 stdout:", stdout)
 
-				if err != nil {
-					fmt.Println(err.Error())
-					return
-				}
+					leds("all", "off")
+					leds("red", "on")
+					leds("green", "on")
 
-				fmt.Println(stdout)
-				ledChan <- ledReq{
-					color: "yellow",
-					mode:  "off",
+				} else {
+					fmt.Println("Channel closed!")
 				}
-				time.Sleep(time.Second)
-				ledChan <- ledReq{
-					color: "green",
-					mode:  "off",
-				}
-				/*err = syscall.Reboot(syscall.LINUX_REBOOT_CMD_RESTART)
-				if err != nil {
-					fmt.Println(err)
-					return
-				}*/
-
-			} else {
-				fmt.Println("Channel closed!")
 			}
 		default:
 			return
@@ -374,22 +249,93 @@ func getConfig() tally {
 	return tallyCfg
 }
 
+func leds(color, state string) {
+	var line *gpiod.Lines
+	var intState []int
+
+	c, err := gpiod.NewChip("gpiochip0")
+	if err != nil {
+		panic(err)
+	}
+
+	var redPins = []int{rpi.J8p11, rpi.J8p16, rpi.J8p29, rpi.J8p36}
+	var yellowPins = []int{rpi.J8p13, rpi.J8p18, rpi.J8p31, rpi.J8p38}
+	var greenPins = []int{rpi.J8p15, rpi.J8p22, rpi.J8p33, rpi.J8p40}
+
+	switch state {
+	case "on":
+		intState = []int{1, 1, 1, 1}
+	case "off":
+		intState = []int{0, 0, 0, 0}
+	default:
+		fmt.Println("state must be on or off")
+		return
+	}
+
+	if color == "all" {
+		l1, _ := c.RequestLines(redPins, gpiod.AsOutput(), gpiod.WithPullDown)
+		l2, _ := c.RequestLines(yellowPins, gpiod.AsOutput(), gpiod.WithPullDown)
+		l3, _ := c.RequestLines(greenPins, gpiod.AsOutput(), gpiod.WithPullDown)
+		_ = l1.SetValues(intState)
+		_ = l2.SetValues(intState)
+		_ = l3.SetValues(intState)
+		_ = l1.Close()
+		_ = l2.Close()
+		_ = l3.Close()
+		_ = c.Close()
+		return
+	}
+
+	switch color {
+	case "red":
+		line, err = c.RequestLines(redPins, gpiod.AsOutput(), gpiod.WithPullDown)
+		if err != nil {
+			panic(err)
+		}
+
+	case "yellow":
+		line, err = c.RequestLines(yellowPins, gpiod.AsOutput(), gpiod.WithPullDown)
+		if err != nil {
+			panic(err)
+		}
+
+	case "green":
+		line, err = c.RequestLines(greenPins, gpiod.AsOutput(), gpiod.WithPullDown)
+		if err != nil {
+			panic(err)
+		}
+
+	default:
+		fmt.Println("color must be red, yellow, green or all")
+		return
+	}
+
+	err = line.SetValues(intState)
+	if err != nil {
+		return
+	}
+
+	err = line.Close()
+	if err != nil {
+		return
+	}
+
+	err = c.Close()
+	if err != nil {
+		return
+	}
+}
+
 func main() {
 	tallyCfg := getConfig()
 
 	wg.Add(1)
 
 	go initButton()
-	go lights()
-	ledChan <- ledReq{
-		color: "all",
-		mode:  "all",
-	}
+
+	leds("all", "on")
 	time.Sleep(time.Second * 3)
-	ledChan <- ledReq{
-		color: "all",
-		mode:  "off",
-	}
+	leds("all", "off")
 
 	var vmixClient = new(vmixClients)
 	vmixClient.vmixIP = tallyCfg.IP
@@ -400,7 +346,6 @@ func main() {
 	err := vmixAPIConnect(vmixClient)
 	if err != nil {
 		fmt.Println("Error connecting to vmix API: ", err)
-		close(ledChan)
 		close(buttonChan)
 		close(vmixClient.vmixMessageChan)
 		panic(err)
@@ -416,7 +361,6 @@ func main() {
 		}
 	}(vmixClient.conn)
 	defer close(vmixClient.vmixMessageChan)
-	defer close(ledChan)
 	defer close(buttonChan)
 
 	wg.Wait()
