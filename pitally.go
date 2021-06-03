@@ -1,6 +1,7 @@
 package main
 
 import (
+	gpio "PiTally/gpio"
 	"bufio"
 	"encoding/json"
 	"fmt"
@@ -51,7 +52,7 @@ func vmixAPIConnect(vmixClient *vmixClients) error {
 			vmixClient.w = bufio.NewWriter(conn)
 			vmixClient.r = bufio.NewReader(conn)
 			vmixClient.connected = true
-			leds("all", "off")
+			gpio.Leds("all", "off")
 		} else if strings.Contains(err.Error(), "connection timed out") ||
 			strings.Contains(err.Error(), "connection refused") ||
 			strings.Contains(err.Error(), "i/o timeout") {
@@ -59,8 +60,8 @@ func vmixAPIConnect(vmixClient *vmixClients) error {
 			fmt.Println("vmix api is inaccessible.  Probably because vMix is not running")
 			fmt.Println("Waiting 5 seconds and trying again")
 			vmixClient.connected = false
-			leds("all", "off")
-			leds("yellow", "on")
+			gpio.Leds("all", "off")
+			gpio.Leds("yellow", "on")
 			time.Sleep(time.Second * 5)
 		} else {
 			fmt.Println("Unable to connect. Error was: ", err)
@@ -126,10 +127,10 @@ func processVmixMessage(vmixClient *vmixClients) {
 			state, _ = strconv.Atoi(messageSlice[4])
 
 			if state == 0 {
-				leds("red", "off")
+				gpio.Leds("red", "off")
 			}
 			if state == 1 {
-				leds("red", "on")
+				gpio.Leds("red", "on")
 			}
 		}
 
@@ -137,10 +138,10 @@ func processVmixMessage(vmixClient *vmixClients) {
 			if messageSlice[2] == vmixClient.tallyCfg.Action+vmixClient.tallyCfg.Value+"Audio" {
 				state, _ = strconv.Atoi(messageSlice[3])
 				if state == 0 {
-					leds("red", "off")
+					gpio.Leds("red", "off")
 				}
 				if state == 1 {
-					leds("red", "on")
+					gpio.Leds("red", "on")
 				}
 			}
 		}
@@ -193,12 +194,12 @@ func buttonCallback(event gpiod.LineEvent) {
 			if ok {
 				tDiff := time.Now().Sub(timePressed)
 				if tDiff > time.Second*3 {
-					leds("all", "off")
-					leds("red", "on")
+					gpio.Leds("all", "off")
+					gpio.Leds("red", "on")
 					time.Sleep(time.Second)
-					leds("yellow", "on")
+					gpio.Leds("yellow", "on")
 					time.Sleep(time.Second)
-					leds("green", "on")
+					gpio.Leds("green", "on")
 
 					cmd := exec.Command("sudo", "/usr/local/bin/doap.sh", "on")
 					stdout, err := cmd.Output()
@@ -212,9 +213,9 @@ func buttonCallback(event gpiod.LineEvent) {
 					fmt.Println("210 String:", cmd.String())
 					fmt.Println("211 stdout:", stdout)
 
-					leds("all", "off")
-					leds("red", "on")
-					leds("green", "on")
+					gpio.Leds("all", "off")
+					gpio.Leds("red", "on")
+					gpio.Leds("green", "on")
 
 				} else {
 					fmt.Println("Channel closed!")
@@ -249,83 +250,6 @@ func getConfig() tally {
 	return tallyCfg
 }
 
-func leds(color, state string) {
-	var line *gpiod.Lines
-	var intState []int
-
-	c, err := gpiod.NewChip("gpiochip0")
-	if err != nil {
-		panic(err)
-	}
-
-	var redPins = []int{rpi.J8p11, rpi.J8p16, rpi.J8p29, rpi.J8p36}
-	var yellowPins = []int{rpi.J8p13, rpi.J8p18, rpi.J8p31, rpi.J8p38}
-	var greenPins = []int{rpi.J8p15, rpi.J8p22, rpi.J8p33, rpi.J8p40}
-
-	switch state {
-	case "on":
-		intState = []int{1, 1, 1, 1}
-	case "off":
-		intState = []int{0, 0, 0, 0}
-	default:
-		fmt.Println("state must be on or off")
-		return
-	}
-
-	if color == "all" {
-		l1, _ := c.RequestLines(redPins, gpiod.AsOutput(), gpiod.WithPullDown)
-		l2, _ := c.RequestLines(yellowPins, gpiod.AsOutput(), gpiod.WithPullDown)
-		l3, _ := c.RequestLines(greenPins, gpiod.AsOutput(), gpiod.WithPullDown)
-		_ = l1.SetValues(intState)
-		_ = l2.SetValues(intState)
-		_ = l3.SetValues(intState)
-		_ = l1.Close()
-		_ = l2.Close()
-		_ = l3.Close()
-		_ = c.Close()
-		return
-	}
-
-	switch color {
-	case "red":
-		line, err = c.RequestLines(redPins, gpiod.AsOutput(), gpiod.WithPullDown)
-		if err != nil {
-			panic(err)
-		}
-
-	case "yellow":
-		line, err = c.RequestLines(yellowPins, gpiod.AsOutput(), gpiod.WithPullDown)
-		if err != nil {
-			panic(err)
-		}
-
-	case "green":
-		line, err = c.RequestLines(greenPins, gpiod.AsOutput(), gpiod.WithPullDown)
-		if err != nil {
-			panic(err)
-		}
-
-	default:
-		fmt.Println("color must be red, yellow, green or all")
-		return
-	}
-
-	err = line.SetValues(intState)
-	if err != nil {
-		return
-	}
-
-	err = line.Close()
-	if err != nil {
-		return
-	}
-
-	err = c.Close()
-	if err != nil {
-		return
-	}
-}
-
 func main() {
 	tallyCfg := getConfig()
 
@@ -333,9 +257,9 @@ func main() {
 
 	go initButton()
 
-	leds("all", "on")
+	gpio.Leds("all", "on")
 	time.Sleep(time.Second * 3)
-	leds("all", "off")
+	gpio.Leds("all", "off")
 
 	var vmixClient = new(vmixClients)
 	vmixClient.vmixIP = tallyCfg.IP

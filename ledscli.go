@@ -1,6 +1,7 @@
 package main
 
 import (
+	gpio "PiTally/gpio"
 	"fmt"
 	"os"
 )
@@ -20,6 +21,6 @@ func main() {
 		}
 		color = args[i]
 		state = args[i+1]
-		leds(color, state)
+		gpio.Leds(color, state)
 	}
 }
