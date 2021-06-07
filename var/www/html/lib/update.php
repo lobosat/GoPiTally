@@ -79,14 +79,19 @@ function update_wpa($ssid,$password,$type="WPA-PSK") {
 
 }
 
-function update_tally ($api_ip,$tally_action,$tally_value) {
+function update_tally ($postvars) {
     //updates the configuration for pitally.py
     $path = '/usr/local/etc/pitally/';
     $file = 'tally_config.json';
 
-    $config = array('ip'=>$api_ip,
-                    'tally_action' => $tally_action,
-                    'tally_value' => strtoupper($tally_value));
+    $config = array('ip' => $postvars['api_ip'],
+                    'red_type' => $postvars['red_type'],
+                    'red_value' => strtoupper($postvars['red_value']),
+                    'yellow_type' => $postvars['yellow_type'],
+                    'yellow_value' => strtoupper($postvars['yellow_value']),
+                    'green_type' => $postvars['green_type'],
+                    'green_value' => strtoupper($postvars['green_value']),
+                    );
 
     $config_json = json_encode($config) . "\n";
 

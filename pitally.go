@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"github.com/beevik/etree"
 	"github.com/warthog618/gpiod"
 	"github.com/warthog618/gpiod/device/rpi"
 	"io/ioutil"
@@ -29,9 +30,20 @@ type vmixClients struct {
 }
 
 type tally struct {
-	Action string `json:"tally_action"` // Bus or Input
-	Value  string `json:"tally_value"`
-	IP     string `json:"ip"`
+	VmixIP      string `json:"ip"`
+	RedType     string `json:"red_type"`
+	RedValue    string `json:"red_value"`
+	YellowType  string `json:"yellow_type"`
+	YellowValue string `json:"yellow_value"`
+	GreenType   string `json:"green_type"`
+	GreenValue  string `json:"green_value"`
+}
+
+type vmState struct {
+	Input     int
+	Bus       map[string]string
+	Streaming int
+	Recording int
 }
 
 var wg sync.WaitGroup
@@ -101,8 +113,18 @@ func getMessage(vmixClient *vmixClients) {
 		} else {
 			fmt.Println("Error in GetMessage.ReadString: ", err)
 			// most likely cause is that the connection to vMix went away (EOF).  Try to reconnect
-			wg.Done()
-			return
+			if strings.Contains(err.Error(), "EOF") {
+				// The channel closed.  Most likely scenario is that communication to vMix was broken.
+				// Restart the vMix service to attempt to re-connect
+				cmd := exec.Command("sudo", "systemctl", "restart", "pitally")
+				_ = cmd.Start()
+				wg.Done()
+				return
+			} else {
+				// Something else happened.  Exit pitally gracefully
+				wg.Done()
+				return
+			}
 		}
 	}
 }
@@ -122,21 +144,12 @@ func processVmixMessage(vmixClient *vmixClients) {
 		// messageSlice[3] - Input
 		// messageSlice[4] - State (usually 0 for off, 1 for on)
 
-		if vmixClient.tallyCfg.Action == "Input" && messageSlice[0] == "ACTS" && messageSlice[1] == "OK" &&
-			messageSlice[2] == "Input" && messageSlice[3] == vmixClient.tallyCfg.Value {
-			state, _ = strconv.Atoi(messageSlice[4])
+		if vmixClient.tallyCfg.RedType == "Input" || vmixClient.tallyCfg.YellowType == "Input" ||
+			vmixClient.tallyCfg.GreenType == "Input" {
+			if vmixClient.tallyCfg.RedType == "Input" && messageSlice[0] == "ACTS" && messageSlice[1] == "OK" &&
+				messageSlice[2] == "Input" && messageSlice[3] == vmixClient.tallyCfg.RedValue {
+				state, _ = strconv.Atoi(messageSlice[4])
 
-			if state == 0 {
-				gpio.Leds("red", "off")
-			}
-			if state == 1 {
-				gpio.Leds("red", "on")
-			}
-		}
-
-		if vmixClient.tallyCfg.Action == "Bus" {
-			if messageSlice[2] == vmixClient.tallyCfg.Action+vmixClient.tallyCfg.Value+"Audio" {
-				state, _ = strconv.Atoi(messageSlice[3])
 				if state == 0 {
 					gpio.Leds("red", "off")
 				}
@@ -144,8 +157,72 @@ func processVmixMessage(vmixClient *vmixClients) {
 					gpio.Leds("red", "on")
 				}
 			}
+
+			if vmixClient.tallyCfg.YellowType == "Input" && messageSlice[0] == "ACTS" && messageSlice[1] == "OK" &&
+				messageSlice[2] == "Input" && messageSlice[3] == vmixClient.tallyCfg.YellowValue {
+				state, _ = strconv.Atoi(messageSlice[4])
+
+				if state == 0 {
+					gpio.Leds("yellow", "off")
+				}
+				if state == 1 {
+					gpio.Leds("yellow", "on")
+				}
+			}
+
+			if vmixClient.tallyCfg.GreenType == "Input" && messageSlice[0] == "ACTS" && messageSlice[1] == "OK" &&
+				messageSlice[2] == "Input" && messageSlice[3] == vmixClient.tallyCfg.GreenValue {
+				state, _ = strconv.Atoi(messageSlice[4])
+
+				if state == 0 {
+					gpio.Leds("green", "off")
+				}
+				if state == 1 {
+					gpio.Leds("green", "on")
+				}
+			}
+
 		}
 
+		if vmixClient.tallyCfg.RedType == "Bus" || vmixClient.tallyCfg.YellowType == "Bus" ||
+			vmixClient.tallyCfg.GreenType == "Bus" {
+
+			if vmixClient.tallyCfg.RedType == "Bus" {
+				if messageSlice[2] == vmixClient.tallyCfg.RedType+vmixClient.tallyCfg.RedValue+"Audio" {
+					state, _ = strconv.Atoi(messageSlice[3])
+					if state == 0 {
+						gpio.Leds("red", "off")
+					}
+					if state == 1 {
+						gpio.Leds("red", "on")
+					}
+				}
+			}
+
+			if vmixClient.tallyCfg.YellowType == "Bus" {
+				if messageSlice[2] == vmixClient.tallyCfg.YellowType+vmixClient.tallyCfg.YellowValue+"Audio" {
+					state, _ = strconv.Atoi(messageSlice[3])
+					if state == 0 {
+						gpio.Leds("yellow", "off")
+					}
+					if state == 1 {
+						gpio.Leds("yellow", "on")
+					}
+				}
+			}
+
+			if vmixClient.tallyCfg.GreenType == "Bus" {
+				if messageSlice[2] == vmixClient.tallyCfg.GreenType+vmixClient.tallyCfg.GreenValue+"Audio" {
+					state, _ = strconv.Atoi(messageSlice[3])
+					if state == 0 {
+						gpio.Leds("green", "off")
+					}
+					if state == 1 {
+						gpio.Leds("green", "on")
+					}
+				}
+			}
+		}
 	}
 }
 
@@ -202,21 +279,10 @@ func buttonCallback(event gpiod.LineEvent) {
 					gpio.Leds("green", "on")
 
 					cmd := exec.Command("sudo", "/usr/local/bin/doap.sh", "on")
-					stdout, err := cmd.Output()
+					err := cmd.Start()
 					if err != nil {
-						fmt.Println("stderror:", cmd.Stderr)
-						fmt.Println("String:", cmd.String())
-						fmt.Println("exec", err.Error())
-						fmt.Println("stdout:", stdout)
 						return
 					}
-					fmt.Println("210 String:", cmd.String())
-					fmt.Println("211 stdout:", stdout)
-
-					gpio.Leds("all", "off")
-					gpio.Leds("red", "on")
-					gpio.Leds("green", "on")
-
 				} else {
 					fmt.Println("Channel closed!")
 				}
@@ -228,7 +294,7 @@ func buttonCallback(event gpiod.LineEvent) {
 }
 
 func getConfig() tally {
-	var tallyCfg tally
+	var cfg tally
 
 	tallyFile, err := os.Open("/usr/local/etc/pitally/tally_config.json")
 	if err != nil {
@@ -242,17 +308,98 @@ func getConfig() tally {
 	}(tallyFile)
 
 	byteValue, _ := ioutil.ReadAll(tallyFile)
-	err = json.Unmarshal(byteValue, &tallyCfg)
+	err = json.Unmarshal(byteValue, &cfg)
 	if err != nil {
 		panic(err)
 	}
 
-	return tallyCfg
+	return cfg
+}
+
+// getVmixState will create a connection to the vMix API and query it to update the
+// vMix state variables with the current configuration
+func getVmixState(vmixIP string) *vmState {
+	var vc = new(vmixClients)
+	vc.vmixIP = vmixIP
+	_ = vmixAPIConnect(vc)
+	var vmixState = new(vmState)
+
+	_, err := vc.w.WriteString("XML\r\n")
+	if err == nil {
+		err = vc.w.Flush()
+	}
+	var xml string
+	var cont bool
+	for cont = true; cont; {
+		line, _ := vc.r.ReadString('\r')
+		if strings.Contains(line, "<vmix>") {
+			xml = xml + line
+		}
+		if strings.Contains(line, "</vmix>") {
+			xml = xml + line
+			cont = false
+		}
+	}
+
+	_ = vc.conn.Close()
+
+	doc := etree.NewDocument()
+	_ = doc.ReadFromString(xml)
+
+	streaming := doc.FindElement("/vmix/streaming").Text()
+	if streaming == "True" {
+		vmixState.Streaming = 1
+	} else {
+		vmixState.Streaming = 0
+	}
+	recording := doc.FindElement("/vmix/recording").Text()
+	if recording == "True" {
+		vmixState.Recording = 1
+	} else {
+		vmixState.Recording = 0
+	}
+
+	active := doc.FindElement("/vmix/active").Text()
+	vmixState.Input, _ = strconv.Atoi(active)
+
+	var bus = make(map[string]string)
+
+	var nameMap = map[string]string{
+		"busA":   "A",
+		"busB":   "B",
+		"busC":   "C",
+		"busD":   "D",
+		"busE":   "E",
+		"busF":   "F",
+		"busG":   "G",
+		"master": "M",
+	}
+
+	for _, audio := range doc.FindElements("./vmix/audio/*") {
+		muted := audio.SelectAttrValue("muted", "")
+		if muted == "True" {
+			bus[nameMap[audio.Tag]] = "0"
+		}
+		if muted == "False" {
+			bus[nameMap[audio.Tag]] = "1"
+		}
+	}
+	vmixState.Bus = bus
+	fmt.Println(vmixState)
+
+	return vmixState
+}
+
+// setInitState will set the tally lights according to the
+// contents of a vmState struct
+func setInitState(state vmState, tallyCfg tally) {
+
 }
 
 func main() {
-	tallyCfg := getConfig()
 
+	tallyCfg := getConfig()
+	_ = getVmixState(tallyCfg.VmixIP)
 	wg.Add(1)
 
 	go initButton()
@@ -262,7 +409,7 @@ func main() {
 	gpio.Leds("all", "off")
 
 	var vmixClient = new(vmixClients)
-	vmixClient.vmixIP = tallyCfg.IP
+	vmixClient.vmixIP = tallyCfg.VmixIP
 	vmixClient.vmixMessageChan = make(chan string)
 	vmixClient.tallyCfg = tallyCfg
 
@@ -288,6 +435,5 @@ func main() {
 	defer close(buttonChan)
 
 	wg.Wait()
-	fmt.Println("PiTally went boom!")
-
+	fmt.Println("PiTally service exiting")
 }

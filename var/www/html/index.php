@@ -12,13 +12,7 @@ if ($_POST['reboot'] == 'Reboot') {
 if ($_POST['accept'] == 'Accept') {
     //Apply Settings
     require_once('lib/update.php');
-    $api_ip = $_POST['api_ip'];
-    $tally_action = $_POST['tally_action'];
-    $tally_value = $_POST['tally_value'];
-    $ssid = $_POST['ssid'];
-    $wifi_password = $_POST['wifi_password'];
-
-    update_tally($api_ip,$tally_action,$tally_value);
+    update_tally($_POST);
     update_wpa($ssid,$wifi_password);
 
 ?>
@@ -42,18 +36,33 @@ if ($_POST['accept'] == 'Accept') {
     <h4>Confirm Settings</h4>
     <form method="post">
     <table>
-        <tr>
-            <td>vMix API IP address</td>
-            <td><?php echo $_POST['api_ip']?></td>
+
+            <td>Red Tally</td>
+            <td>Type: <?php echo $_POST['red_type']?><br/>
+            Value: <?php echo $_POST['red_value']?>
+            </td>
         </tr>
         <tr>
-            <td>Tally Action</td>
-            <td><?php echo $_POST['tally_action']?></td>
+            <td>Yellow Tally</td>
+            <td>Type: <?php echo $_POST['yellow_type']?><br/>
+            Value: <?php echo $_POST['yellow_value']?>
+            </td>
+        </tr>
+        <tr>
+            <td>Green Tally</td>
+            <td>Type: <?php echo $_POST['green_type']?><br/>
+            Value: <?php echo $_POST['green_value']?>
+            </td>
         </tr>
         <tr>
             <td>Tally Value</td>
             <td><?php echo $_POST['tally_value']?></td>
         </tr>
+        <tr>
+            <td>vMix API IP address</td>
+            <td><?php echo $_POST['api_ip']?></td>
+        </tr>
+        <tr>
         <tr>
             <td>WiFi SSID</td>
             <td><?php echo $_POST['ssid']?></td>
@@ -66,14 +75,19 @@ if ($_POST['accept'] == 'Accept') {
 
             <td><input type="submit" name="redo" id="redo" value="Redo"\> </td>
             <td><input type="submit" name="accept" id="accept" value="Accept" </td>
-                <input type="hidden" name="api_ip" id="api_ip" value="<?php echo $_POST['api_ip']?>"/>
-                <input type="hidden" name="ssid" id="ssid" value="<?php echo $_POST['ssid']?>"/>
-                <input type="hidden" name="wifi_password" id="wifi_password" value="<?php echo $_POST['wifi_password']?>"/>
-                <input type="hidden" name="tally_action" id="tally_action" value="<?php echo $_POST['tally_action']?>"/>
-                <input type="hidden" name="tally_value" id="tally_value" value="<?php echo $_POST['tally_value']?>"/>
+
 
         </tr>
     </table>
+    <input type="hidden" name="api_ip" id="api_ip" value="<?php echo $_POST['api_ip']?>"/>
+    <input type="hidden" name="ssid" id="ssid" value="<?php echo $_POST['ssid']?>"/>
+    <input type="hidden" name="wifi_password" id="wifi_password" value="<?php echo $_POST['wifi_password']?>"/>
+    <input type="hidden" name="red_type" id="red_type" value="<?php echo $_POST['red_type']?>"/>
+    <input type="hidden" name="red_value" id="red_value" value="<?php echo $_POST['red_value']?>"/>
+    <input type="hidden" name="yellow_type" id="yellow_type" value="<?php echo $_POST['yellow_type']?>"/>
+    <input type="hidden" name="yellow_value" id="yellow_value" value="<?php echo $_POST['yellow_value']?>"/>
+    <input type="hidden" name="green_type" id="green_type" value="<?php echo $_POST['green_type']?>"/>
+    <input type="hidden" name="green_value" id="green_value" value="<?php echo $_POST['green_value']?>"/>
     </form>
     </div>
     </div>
@@ -87,24 +101,55 @@ if ( empty($_POST['sub_form']) && empty($_POST['accept']) && empty($_POST['reboo
         <h4>PiTally Configuration Page</h4>
         <form method="post">
 
-            <label for="api_ip">vMix API IP address</label>
-            <input type="text" name="api_ip" id="api_ip"/>
-            <br/>
-            <label for="tally_action">Tally Action</label>
-            <select name="tally_action" id="tally_action">
+            <h2>Red</h2>
+            <label for="red_type">Type</label>
+            <select name="red_type" id="red_type">
+                <option value="None">None</option>
                 <option value="Input">Input</option>
                 <option value="Bus">Bus</option>
+                <option value="Streaming">Streaming</option>
+                <option value="Recording">Recording</option>
             </select>
             <br/>
-            <label for="tally_value">Tally Value (Input/Bus letter or number)</label>
-            <input type="text" name="tally_value" id="tally_value" size=3/>
+            <label for="red_value">Tally Value</label>
+            <input type="text" name="red_value" id="red_value" size=3/>
+            <br/>
+            <h2>Yellow</h2>
+            <label for="yellow_type">Type</label>
+            <select name="yellow_type" id="yellow_type">
+                <option value="None">None</option>
+                <option value="Input">Input</option>
+                <option value="Bus">Bus</option>
+                <option value="Streaming">Streaming</option>
+                <option value="Recording">Recording</option>
+            </select>
+            <br/>
+            <label for="yellow_value">Tally Value</label>
+            <input type="text" name="yellow_value" id="yellow_value" size=3/>
+            <br/>
+            <h2>Green</h2>
+            <label for="green_type">Type</label>
+            <select name="green_type" id="green_type">
+                <option value="None">None</option>
+                <option value="Input">Input</option>
+                <option value="Bus">Bus</option>
+                <option value="Streaming">Streaming</option>
+                <option value="Recording">Recording</option>
+            </select>
+            <br/>
+            <label for="green_value">Tally Value</label>
+            <input type="text" name="green_value" id="green_value" size=3/>
             <br/>
             <label for="ssid">WiFi SSID</label>
             <input type="text" name="ssid" id="ssid"/>
             <br/>
             <label for="wifi_password">WiFi Password</label>
             <input type="text" name="wifi_password" id="wifi_password"/>
-            <br/><br/>
+            <br/>
+            <label for="api_ip">vMix API IP address</label>
+            <input type="text" name="api_ip" id="api_ip"/>
+            <br/>
+            <br/>
             <input type="submit" name="sub_form" id="sub_form" value="Submit"/>
         </form>
      </div>
