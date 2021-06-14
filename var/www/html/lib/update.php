@@ -1,6 +1,9 @@
 <?php
 
 function update_wpa($ssid,$password,$type="WPA-PSK") {
+    if ($ssid == "" || $password == "") {
+        return;
+    }
     $path = "/etc/wpa_supplicant/";
     $filename = "wpa_supplicant.conf";
     $file = file($path . $filename);
@@ -32,9 +35,7 @@ function update_wpa($ssid,$password,$type="WPA-PSK") {
                     $networks[$i][$key] = $value;
                 }
                 $p++;
-
             }
-
         }
         $i++;
     }
@@ -49,9 +50,7 @@ function update_wpa($ssid,$password,$type="WPA-PSK") {
 
     //add in the new network into the array
     $networks[] = array('ssid' => '"' . $ssid . '"',
-                    'psk' => '"' . $password . '"',
-                    'key_mgmt' => $type);
-
+                    'psk' => '"' . $password . '"');
 
     //assemble the new wpa_supplicant file in an array
     $new_wpa = array();
@@ -65,18 +64,15 @@ function update_wpa($ssid,$password,$type="WPA-PSK") {
         $new_wpa[] = "network={" . "\n";
         $new_wpa[] = '	ssid=' . $network['ssid'] . "\n";
         $new_wpa[] = '	psk=' . $network['psk'] . "\n";
-        $new_wpa[] = '	key_mgmt=' .$network['key_mgmt'] . "\n";
         $new_wpa[] = '}' . "\n";
         $new_wpa[] = "" . "\n";
     }
 
     //backup old file
-    exec('sudo cp ' .$path . $filename . ' ' . $path . $filename . '.' . time());
+    rename($path . $filename, $path . $filename . "." .time());
 
     //write the new file
-    file_put_contents($filename,$new_wpa);
-    exec('sudo mv ' . $filename . ' ' . $path . $filename);
-
+    file_put_contents($path . $filename,$new_wpa);
 }
 
 function update_tally ($postvars) {
@@ -100,4 +96,5 @@ function update_tally ($postvars) {
 
     //write new file
     file_put_contents($path . $file,$config_json);
+
 }

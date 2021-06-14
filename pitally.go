@@ -76,7 +76,7 @@ func vmixAPIConnect(vmixClient *vmixClients) error {
 			gpio.Leds("yellow", "on")
 			time.Sleep(time.Second * 5)
 		} else {
-			fmt.Println("Unable to connect. Error was: ", err)
+			panic(err)
 			return err
 		}
 	}
@@ -417,8 +417,6 @@ func main() {
 	err := vmixAPIConnect(vmixClient)
 	if err != nil {
 		fmt.Println("Error connecting to vmix API: ", err)
-		close(buttonChan)
-		close(vmixClient.vmixMessageChan)
 		panic(err)
 	}
 

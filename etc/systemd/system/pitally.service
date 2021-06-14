@@ -1,11 +1,13 @@
 # Place in /etc/systemd/system
 [Unit]
 Description=PiTally daemon that polls vMix TCP API
+Requires=network.target
+After=network.target lighttpd.service
 
 [Service]
 Type=exec
 ExecStart=/usr/local/bin/pitally
-ExecStopPost=/usr/bin/python /usr/local/bin/allOff.py
+ExecStopPost=/usr/local/bin/ledscli all off
 KillMode=process
 Restart=always
 RestartSec=42s

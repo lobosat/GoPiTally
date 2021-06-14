@@ -13,7 +13,7 @@ if ($_POST['accept'] == 'Accept') {
     //Apply Settings
     require_once('lib/update.php');
     update_tally($_POST);
-    update_wpa($ssid,$wifi_password);
+    update_wpa($_POST['ssid'],$_POST['wifi_password']);
 
 ?>
     <div id="main">
