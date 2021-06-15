@@ -12,6 +12,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -143,87 +144,165 @@ func processVmixMessage(vmixClient *vmixClients) {
 		// messageSlice[2] - Action
 		// messageSlice[3] - Input
 		// messageSlice[4] - State (usually 0 for off, 1 for on)
+		if messageSlice[0] == "ACTS" && messageSlice[1] == "OK" {
 
-		if vmixClient.tallyCfg.RedType == "Input" || vmixClient.tallyCfg.YellowType == "Input" ||
-			vmixClient.tallyCfg.GreenType == "Input" {
-			if vmixClient.tallyCfg.RedType == "Input" && messageSlice[0] == "ACTS" && messageSlice[1] == "OK" &&
-				messageSlice[2] == "Input" && messageSlice[3] == vmixClient.tallyCfg.RedValue {
-				state, _ = strconv.Atoi(messageSlice[4])
+			if messageSlice[2] == "Input" {
+				if vmixClient.tallyCfg.RedType == "Input" || vmixClient.tallyCfg.YellowType == "Input" ||
+					vmixClient.tallyCfg.GreenType == "Input" {
 
-				if state == 0 {
-					gpio.Leds("red", "off")
-				}
-				if state == 1 {
-					gpio.Leds("red", "on")
+					state, _ = strconv.Atoi(messageSlice[4])
+
+					if vmixClient.tallyCfg.RedType == "Input" && messageSlice[3] == vmixClient.tallyCfg.RedValue {
+
+						if state == 0 {
+							gpio.Leds("red", "off")
+						}
+						if state == 1 {
+							gpio.Leds("red", "on")
+						}
+					}
+
+					if vmixClient.tallyCfg.YellowType == "Input" && messageSlice[3] == vmixClient.tallyCfg.YellowValue {
+
+						if state == 0 {
+							gpio.Leds("yellow", "off")
+						}
+						if state == 1 {
+							gpio.Leds("yellow", "on")
+						}
+					}
+
+					if vmixClient.tallyCfg.GreenType == "Input" && messageSlice[0] == "ACTS" && messageSlice[1] == "OK" &&
+						messageSlice[2] == "Input" && messageSlice[3] == vmixClient.tallyCfg.GreenValue {
+
+						if state == 0 {
+							gpio.Leds("green", "off")
+						}
+						if state == 1 {
+							gpio.Leds("green", "on")
+						}
+					}
 				}
 			}
 
-			if vmixClient.tallyCfg.YellowType == "Input" && messageSlice[0] == "ACTS" && messageSlice[1] == "OK" &&
-				messageSlice[2] == "Input" && messageSlice[3] == vmixClient.tallyCfg.YellowValue {
-				state, _ = strconv.Atoi(messageSlice[4])
+			matched, _ := regexp.Match("Bus.Audio", []byte(messageSlice[2]))
 
-				if state == 0 {
-					gpio.Leds("yellow", "off")
-				}
-				if state == 1 {
-					gpio.Leds("yellow", "on")
-				}
-			}
-
-			if vmixClient.tallyCfg.GreenType == "Input" && messageSlice[0] == "ACTS" && messageSlice[1] == "OK" &&
-				messageSlice[2] == "Input" && messageSlice[3] == vmixClient.tallyCfg.GreenValue {
-				state, _ = strconv.Atoi(messageSlice[4])
-
-				if state == 0 {
-					gpio.Leds("green", "off")
-				}
-				if state == 1 {
-					gpio.Leds("green", "on")
-				}
-			}
-
-		}
-
-		if vmixClient.tallyCfg.RedType == "Bus" || vmixClient.tallyCfg.YellowType == "Bus" ||
-			vmixClient.tallyCfg.GreenType == "Bus" {
-
-			if vmixClient.tallyCfg.RedType == "Bus" {
-				if messageSlice[2] == vmixClient.tallyCfg.RedType+vmixClient.tallyCfg.RedValue+"Audio" {
+			if matched {
+				if vmixClient.tallyCfg.RedType == "Bus" || vmixClient.tallyCfg.YellowType == "Bus" ||
+					vmixClient.tallyCfg.GreenType == "Bus" {
 					state, _ = strconv.Atoi(messageSlice[3])
-					if state == 0 {
-						gpio.Leds("red", "off")
+
+					if vmixClient.tallyCfg.RedType == "Bus" {
+						if messageSlice[2] == vmixClient.tallyCfg.RedType+vmixClient.tallyCfg.RedValue+"Audio" {
+
+							if state == 0 {
+								gpio.Leds("red", "off")
+							}
+							if state == 1 {
+								gpio.Leds("red", "on")
+							}
+						}
 					}
-					if state == 1 {
-						gpio.Leds("red", "on")
+
+					if vmixClient.tallyCfg.YellowType == "Bus" {
+						if messageSlice[2] == vmixClient.tallyCfg.YellowType+vmixClient.tallyCfg.YellowValue+"Audio" {
+
+							if state == 0 {
+								gpio.Leds("yellow", "off")
+							}
+							if state == 1 {
+								gpio.Leds("yellow", "on")
+							}
+						}
+					}
+
+					if vmixClient.tallyCfg.GreenType == "Bus" {
+						if messageSlice[2] == vmixClient.tallyCfg.GreenType+vmixClient.tallyCfg.GreenValue+"Audio" {
+
+							if state == 0 {
+								gpio.Leds("green", "off")
+							}
+							if state == 1 {
+								gpio.Leds("green", "on")
+							}
+						}
 					}
 				}
 			}
 
-			if vmixClient.tallyCfg.YellowType == "Bus" {
-				if messageSlice[2] == vmixClient.tallyCfg.YellowType+vmixClient.tallyCfg.YellowValue+"Audio" {
+			if messageSlice[2] == "Streaming" {
+				if vmixClient.tallyCfg.RedType == "Streaming" || vmixClient.tallyCfg.YellowType == "Streaming" ||
+					vmixClient.tallyCfg.GreenType == "Streaming" {
+
 					state, _ = strconv.Atoi(messageSlice[3])
-					if state == 0 {
-						gpio.Leds("yellow", "off")
+
+					if vmixClient.tallyCfg.RedType == messageSlice[2] {
+						if state == 0 {
+							gpio.Leds("red", "off")
+						}
+						if state == 1 {
+							gpio.Leds("red", "on")
+						}
 					}
-					if state == 1 {
-						gpio.Leds("yellow", "on")
+
+					if vmixClient.tallyCfg.YellowType == messageSlice[2] {
+						if state == 0 {
+							gpio.Leds("yellow", "off")
+						}
+						if state == 1 {
+							gpio.Leds("yellow", "on")
+						}
+					}
+
+					if vmixClient.tallyCfg.GreenType == messageSlice[2] {
+						if state == 0 {
+							gpio.Leds("green", "off")
+						}
+						if state == 1 {
+							gpio.Leds("green", "on")
+						}
 					}
 				}
 			}
 
-			if vmixClient.tallyCfg.GreenType == "Bus" {
-				if messageSlice[2] == vmixClient.tallyCfg.GreenType+vmixClient.tallyCfg.GreenValue+"Audio" {
+			if messageSlice[2] == "Recording" {
+				if vmixClient.tallyCfg.RedType == "Recording" || vmixClient.tallyCfg.YellowType == "Recording" ||
+					vmixClient.tallyCfg.GreenType == "Recording" {
+
 					state, _ = strconv.Atoi(messageSlice[3])
-					if state == 0 {
-						gpio.Leds("green", "off")
+
+					if vmixClient.tallyCfg.RedType == messageSlice[2] {
+						if state == 0 {
+							gpio.Leds("red", "off")
+						}
+						if state == 1 {
+							gpio.Leds("red", "on")
+						}
 					}
-					if state == 1 {
-						gpio.Leds("green", "on")
+
+					if vmixClient.tallyCfg.YellowType == messageSlice[2] {
+						if state == 0 {
+							gpio.Leds("yellow", "off")
+						}
+						if state == 1 {
+							gpio.Leds("yellow", "on")
+						}
+					}
+
+					if vmixClient.tallyCfg.GreenType == messageSlice[2] {
+						if state == 0 {
+							gpio.Leds("green", "off")
+						}
+						if state == 1 {
+							gpio.Leds("green", "on")
+						}
 					}
 				}
 			}
+
 		}
 	}
+
 }
 
 func initButton() {
