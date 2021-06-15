@@ -505,10 +505,6 @@ func getVmixState(vmixIP string) *vmState {
 		}
 	}
 	vmixState.Bus = bus
-	fmt.Println("Active Input: ", vmixState.Input)
-	fmt.Println("Buses: ", vmixState.Bus)
-	fmt.Println("Streaming: ", vmixState.Streaming)
-	fmt.Println("Recording: ", vmixState.Recording)
 
 	return vmixState
 }
