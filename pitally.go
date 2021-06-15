@@ -375,7 +375,8 @@ func getConfig() tally {
 
 	// Check for /boot/tally_config.json.  If it exists move it to /usr/local/etc/pitally
 	if _, err := os.Stat("/boot/tally_config.json"); err == nil {
-		fmt.Println("Found a Tally Config file in /boot. Moving to /usr/local/etc/pitally")
+		log.Println("Found a Tally Config file in /boot. Moving to /usr/local/etc/pitally")
+
 		// Open original file
 		originalFile, err := os.Open("/boot/tally_config.json")
 		if err != nil {
