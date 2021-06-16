@@ -1,5 +1,10 @@
 #!/bin/bash
 
+if [ "$EUID" -ne 0 ]
+  then echo "Please run as root"
+  exit
+fi
+
 case $1 in
 on)
   systemctl stop pitally
@@ -12,6 +17,11 @@ on)
   systemctl restart dhcpcd
   systemctl unmask hostapd
   systemctl start hostapd
+  /usr/local/bin/ledscli green on
+  sleep 2s
+  /usr/local/bin/ledscli yellow on
+  sleep 2s
+  /usr/local/bin/ledscli red on
   ;;
 
 off)
